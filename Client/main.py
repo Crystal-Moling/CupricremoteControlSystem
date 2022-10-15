@@ -7,9 +7,11 @@ def tcpClient(client):
         try:
             recv_data = client.recv(2048).decode()
             json_data = json.loads(recv_data)
-            match json_data['content']:
-                case 'hello':
-                    print('get hello')
+            match json_data['type']:
+                case 'heartbeat':
+                    client.send(json.dumps({
+                        'content': 'alive'
+                    }).encode())
         except:
             client.close()
             connect()
