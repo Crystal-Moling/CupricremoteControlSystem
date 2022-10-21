@@ -1,5 +1,3 @@
-from os import name
-from platform import java_ver
 from fastapi import FastAPI
 import threading
 import uvicorn
@@ -15,27 +13,12 @@ socket_conns = {}
 
 # region - TCP Connections
 
-def tcp_conn(client_socket, address): # TCP connection daemon thread
-    while True:
-        try:
-            recv_data = client_socket.recv(2048).decode()
-            json_data = json.loads(recv_data)
-            match json_data['type']:
-                case 'coltroller': # Received TCP request from controller
-                    controller_cmd(client_socket,json_data['content'])
-                #case 'client': # Received TCP request from client
-                    #client_msg(json_data['content'],address)
-        except:
-            print(end='')
-
-
 def listen_tcp():
     while True:
         client_socket,address = server.accept() # Accept TCP connection
-        print('Connection ' + str(address)) # Print connection base info
         conn_name = address[0] + ':' + str(address[1])
+        print('Connection ' + conn_name) # Print connection base info
         socket_conns[conn_name] = client_socket # add connection to dic
-        threading.Thread(target=tcp_conn,args=(client_socket,address),daemon=True,name=conn_name).start()
 
 # endregion
 
@@ -49,14 +32,14 @@ def server_version():
 @appsl.get("/list/")
 def list_connections():
     conn_list = {}
-    print(threading.enumerate())
+    #print(threading.enumerate())
     for key in list(socket_conns.keys()):
         conn_list[key] = str(socket_conns[key])
     return conn_list
 
 
 @appsl.get("/shell/{conn_address}")
-def exec_shell(conn_address:str,command:str=None):
+def exec_shell(conn_address:str, command:str=None):
     shell = socket_conns[conn_address]
     shell.send(json.dumps({
         'type': 'shell',
@@ -72,26 +55,11 @@ def exec_shell(conn_address:str,command:str=None):
                 shell.send(json.dumps({
                     'type': 'okay'
                 }).encode())
+                continue
             case 'data':
                 return json_data['content']
 
 #endregion
-
-def controller_cmd(client_socket,cmd):
-    match cmd:
-        case 'getsysinfo':
-            print()
-        case 'listfile':
-            print()
-        case 'hello':
-            client_socket.send(json.dumps({
-                'content': 'hello'
-            }).encode())
-
-
-def client_msg(msg,address):
-    print(msg, end=' ')
-    print(address)
 
 # region - Heartbeat check alive
 
@@ -103,22 +71,9 @@ def client_heartbeat():
                 heartbeat.send(json.dumps({
                     'type': 'heartbeat'
                 }).encode())
-                recv_data = heartbeat.recv(2048).decode()
-                json_data = json.dumps(recv_data)
-                if json_data['content'] != 'alive':
-                    print("Undefind " + key)
-                    socket_conns.pop(key)
-                    for thread in threading.enumerate():
-                        if thread.name == key:
-                            thread.join()
-                            thread.setDaemon(False)
-            except:
-                print("Connection lost " + key)
+            except socket.error as e:
+                print('Connection lost ' + key + ' : ' + e.strerror)
                 socket_conns.pop(key)
-                for thread in threading.enumerate():
-                    if thread.name == key:
-                        thread.join()
-                        thread.setDaemon(False)
         time.sleep(1)
 
 # endregion
@@ -133,7 +88,7 @@ def tcplistener(): # socket tcp service
     server.bind((socketHost, socketPort))
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.listen(128)
-    print("\033[0;32msocket listen on\033[0m" + ": " + socketHost + ":" + str(socketPort))
+    print('\033[0;32mINFO\033[0m' + ':     Socket listen on' + socketHost + ':' + str(socketPort))
     listen_tcp()
 
 # endregion
