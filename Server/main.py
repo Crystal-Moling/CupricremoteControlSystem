@@ -1,9 +1,12 @@
+from starlette.background import BackgroundTask
+from starlette.responses import FileResponse
 from fastapi import FastAPI
 import threading
 import uvicorn
 import socket
 import json
 import time
+import os
 
 socketHost = 'localhost'
 socketPort = 8088
@@ -72,8 +75,25 @@ def scan_dir(conn_address:str, path:str=None):
     try:
         client = socket_conns[conn_address]
         return recv_dyn_socket(client, 'scandir', path)
-    except:
-        return 'Undefind client'
+    except Exception as e:
+        return 'Undefind client ' + str(e)
+
+
+@webapi.get("/download/{conn_address}") # Download file from client
+def download_file(conn_address:str, path:str=None):
+    try:
+        client = socket_conns[conn_address]
+        buf = bytearray.fromhex(recv_dyn_socket(client, 'downfile', path))
+        temp_file = os.getcwd() + os.path.sep + 'temp' + os.path.sep + os.path.split(path)[-1]
+        with open(temp_file, 'wb') as file:
+            file.write(buf)
+        return FileResponse(
+            temp_file,
+            filename=os.path.split(path)[-1],
+            background=BackgroundTask(lambda: os.remove(temp_file))
+            )
+    except Exception as e:
+        return 'Undefind client ' + str(e)
 
 #endregion
 
@@ -110,6 +130,7 @@ def tcplistener(): # socket tcp service
 # endregion
 
 if __name__ == "__main__":
+    if not os.path.exists(os.getcwd() + os.path.sep + 'temp'): os.mkdir(os.getcwd() + os.path.sep + 'temp')
     fastAPI = threading.Thread(target=fastapi,name='FastAPI').start()
     tcpListener = threading.Thread(target=tcplistener,name='TCPListener').start()
     heartbeat = threading.Thread(target=client_heartbeat,name='HeartBeat').start()
