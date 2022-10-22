@@ -55,7 +55,7 @@ def get_info(server): # Get system info
     send_dyn_socket(server, send_info)
 
 
-def download_file(server, filepath):
+def download_file(server, filepath): # Get file
     if os.path.exists(filepath):
         print(filepath)
         buf = bytearray(os.path.getsize(filepath))
