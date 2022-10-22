@@ -1,3 +1,6 @@
 Client/__pycache__/
+Client/build/
+Client/dist/
+Client/main.spec
 Server/__pycache__/
 temp/

@@ -65,13 +65,18 @@ class Telnet(threading.Thread):
                     case 'dir':
                         func_return = scan_dir(conn_address=return_arr[1], path=return_arr[2])
                         self.connection.send(
-                            b'== DIR =======' + self.crlf +
+                            b'== DIR ============' + self.crlf +
                             ' | '.join(func_return[0]).encode('gbk') + self.crlf +
-                            b'== FILE ======' + self.crlf +
+                            b'== FILE ===========' + self.crlf +
                             ' | '.join(func_return[1]).encode('gbk')
                             )
+                    case 'fetch':
+                        func_return = download_file(conn_address=return_arr[1], path=return_arr[2], telnet=True)
+                        self.connection.send(
+                            b'== HEX STREAM =====' + self.crlf + func_return.encode('gbk')
+                            )
                 self.inputstr = ''
-                self.connection.send(self.crlf + b'>')
+                self.connection.send(self.crlf * 2 + b'>')
             else:
                 self.inputstr += buf.decode()
             if ii == 0:
@@ -144,18 +149,24 @@ def get_info(conn_address:str):
 
 
 @webapi.get("/download/{conn_address}") # Download file from client
-def download_file(conn_address:str, path:str=None):
+def download_file(conn_address:str, path:str=None, telnet:bool=False):
     try:
         client = socket_conns[conn_address]
         buf = bytearray.fromhex(recv_dyn_socket(client, 'downfile', path))
         temp_file = os.getcwd() + os.path.sep + 'temp' + os.path.sep + os.path.split(path)[-1]
         with open(temp_file, 'wb') as file:
             file.write(buf)
-        return FileResponse(
-            temp_file,
-            filename=os.path.split(path)[-1],
-            background=BackgroundTask(lambda: os.remove(temp_file))
-            )
+        if not telnet:
+            return FileResponse(
+                temp_file,
+                filename=os.path.split(path)[-1],
+                background=BackgroundTask(lambda: os.remove(temp_file))
+                )
+        else:
+            return_buf = bytearray(os.path.getsize(temp_file))
+            with open(temp_file, 'rb') as return_file:
+                return_file.readinto(return_buf)
+            return return_buf.hex()
     except Exception as e:
         return 'Client Error : ' + str(e)
 
