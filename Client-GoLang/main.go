@@ -26,10 +26,7 @@ func connect() {
 	majorVersion, minorVersion, buildNumber := RtlGetNtVersionNumbers()
 	var versionNumber string = fmt.Sprintf("%d.%d.%d", majorVersion, minorVersion, buildNumber)
 	var osDetail string = fmt.Sprintf("%v-%v-%v", runtime.GOOS, versionNumber, runtime.GOARCH)
-	jsonBytes, err := json.Marshal(`{ 
-			"type": "client",
-			"content": ` + osDetail +
-		`}`)
+	jsonBytes, err := json.Marshal(`{"type": "client","content": "` + osDetail + `"}`)
 	_, err = tcpServer.Write([]byte(jsonBytes))
 	checkError(err)
 }
