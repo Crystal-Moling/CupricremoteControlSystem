@@ -89,8 +89,8 @@ def tcpClient(client):
 
 
 def connect():
-    host = '127.0.0.1'
-    port = 8088
+    host = '192.168.10.102'
+    port = 8098
     try:
         client = socket.socket()
         client.connect((host, port))

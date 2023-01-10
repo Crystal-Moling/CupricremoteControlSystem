@@ -23,7 +23,9 @@ def multipart_recv(client):
 
 def multipart_file_recv(client, local_path):
     file_length = 0
-    head_recv = json.loads(client.recv(2048).decode('utf-8'))
+    recv_data = client.recv(2048).decode('utf-8')
+    print(recv_data)
+    head_recv = json.loads(recv_data)
     if head_recv['type'] == 'len':
         file_length = head_recv['content']
     print(type_info + 'Downloading into: ' + local_path + ' , Total blocks: ' + str(file_length))
@@ -33,7 +35,8 @@ def multipart_file_recv(client, local_path):
         with open(temp_path, 'wb') as temp:
             key = 'NXT'
             while key == 'NXT':
-                json_data = json.loads(client.recv(2048).decode('utf-8'))
+                recv_data = client.recv(2048).decode('utf-8')
+                json_data = json.loads(recv_data)
                 recv_buf = str(base64.b64decode(json_data['content']))[2:-1]
                 for i in range(0,2):
                     recv_buf = codecs.escape_decode(recv_buf)[0].decode('utf-8')
